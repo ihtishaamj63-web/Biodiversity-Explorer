@@ -1,0 +1,10 @@
+step,removed,remaining
+Input,0,12206
+Genus-only names,40,12166
+Missing coordinates,162,12004
+Zero coordinates,60,11944
+Outside South Africa,83,11861
+Imprecise coordinates,358,11503
+Missing years,77,11426
+Invalid years,20,11406
+Duplicate records,189,11217
