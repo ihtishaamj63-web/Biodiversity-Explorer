@@ -6,25 +6,27 @@ An interactive R Shiny dashboard for exploring Proteaceae and Ericaceae occurren
 
 ## What it does
 
-- **Map**: prominent records coloured by IUCN status, or species richness per grid cell (0.1, 0.25 or 0.5 degrees)
-- **Diversity**: record and species counts, Shannon and Simpson indices, a survey-effort chart, a species accumulation curve and records per species
+- **Start here**: plain-language introduction, live summaries of filtered records, and an explanation of extinction-risk categories
+- **Map**: species richness per grid cell by default, with individual records coloured by IUCN status as an alternate view
+- **Diversity**: sightings and species counts, an intuitive variety score, a different-species chance, a recording-over-time chart, a species accumulation curve and the most-recorded species
 - **Compare areas**: two areas side by side, including *rarefied* richness so the better-surveyed area doesn't win just by having more records
 - **Data quality**: how many records each cleaning step removed
 - Filters for year, IUCN status, genus, area and species, plus CSV download of the filtered data
-- Hover or keyboard-focus the **?** hints beside controls and summary labels for short explanations.
+- A **Threatened only** shortcut for Vulnerable, Endangered and Critically Endangered categories
 
 ## Reading the dashboard
 
 - Map dots are occurrence records, not individual plants. The richness map counts distinct recorded species in each grid cell; its cell size also defines the survey sites used for the accumulation curve.
-- Shannon H' and Simpson 1-D summarize diversity in the sampled records. Higher values mean the records are spread across more species and/or more evenly. They are not estimates of plant abundance.
+- The variety score shows the effective number of equally common species. The different-species chance estimates how often two randomly selected sightings would represent different species. Neither estimates plant abundance.
 - The accumulation curve adds grid cells in random order and tracks how many distinct species are found. A curve still rising at the end suggests additional sampling may find more.
 - The area comparison includes rarefied richness: expected species at the same number of occurrence records in each area. It helps account for unequal record counts, but does not remove all sampling bias.
 - The data-quality tab reports removals sequentially; a record is attributed to the first cleaning rule it fails.
+- “Threatened” refers to Vulnerable, Endangered and Critically Endangered categories. Near Threatened is shown separately.
 
 ## What this shows (ecologically)
 
 - Occurrence data is cleaned the way an ecologist would: missing and zero coordinates, coordinates outside South Africa (including swapped lat/lon), imprecise records, bad years, non-species names and duplicates are removed, and every step is logged.
-- Survey effort is treated as a real problem: a records-per-year chart, a species accumulation curve (is the area fully surveyed?) and rarefied richness for fair comparison.
+- Survey effort is treated as a real problem: a records-per-year chart, a species accumulation curve showing whether sampled cells continue to add species, and rarefied richness for comparison.
 - Diversity indices are calculated on record counts per species, so they describe the sampled records rather than true abundance.
 
 ## Stack
@@ -42,11 +44,10 @@ install.packages(c("shiny", "tidyverse", "leaflet", "vegan", "DT", "testthat"))
 From the project root:
 
 ```r
-source("data-raw/build_data.R")   # simulates raw data, cleans it, writes data/
 shiny::runApp()
 ```
 
-No logins, API keys or internet connection are needed (map tiles aside).
+The included cleaned data lets the app start immediately. To regenerate the simulated data and cleaning log first, run `source("data-raw/build_data.R")`. Map tiles are served by OpenStreetMap and require an internet connection; no API key is needed.
 
 ## Tests
 
@@ -54,7 +55,7 @@ No logins, API keys or internet connection are needed (map tiles aside).
 testthat::test_dir("tests/testthat")
 ```
 
-The diversity and rarefaction tests check against hand-calculated values, and the cleaning test checks that each step removes exactly the records it should.
+The tests check diversity and rarefaction against hand-calculated values, and cover name normalization, cleaning removals, region assignment, zero-coordinate handling, map grid cells and repeatable species accumulation.
 
 ## Using real GBIF data
 
@@ -74,5 +75,3 @@ data-raw/                      data scripts: simulate, clean, optional GBIF down
 data/                          cleaned data and cleaning log (generated)
 tests/testthat/                unit tests
 ```
-
-## Screenshots

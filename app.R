@@ -52,12 +52,17 @@ fmt <- function(x) if (is.na(x)) "–" else formatC(x, digits = 2, format = "f")
 plot_theme <- theme_minimal(base_size = 13) +
   theme(plot.subtitle = element_text(colour = "#7f8c8d"))
 
-hint <- function(text) {
-  tags$span(
-    "?", class = "hint", title = text, tabindex = "0", role = "img",
-    `aria-label` = paste("Help:", text)
-  )
-}
+threatened_statuses <- c("Vulnerable", "Endangered", "Critically Endangered")
+
+status_descriptions <- c(
+  "Least Concern" = "Not currently considered at risk of extinction.",
+  "Near Threatened" = "Close to qualifying for a threatened category.",
+  "Vulnerable" = "At high risk of extinction in the wild.",
+  "Endangered" = "At very high risk of extinction in the wild.",
+  "Critically Endangered" = "At extremely high risk of extinction in the wild.",
+  "Data Deficient" = "There is not enough information to assess extinction risk.",
+  "Not Evaluated" = "No extinction-risk assessment is available."
+)
 
 # ---- UI ---------------------------------------------------------------------
 
@@ -69,11 +74,10 @@ ui <- fluidPage(
     .stat-number { font-size: 28px; font-weight: bold; color: #2c3e50; margin: 0; }
     .stat-label { color: #7f8c8d; margin-bottom: 4px; }
     .note { color: #7f8c8d; font-size: 13px; }
-    .hint { display: inline-block; width: 16px; height: 16px; margin-left: 3px;
-      border: 1px solid #7f8c8d; border-radius: 50%; color: #52616b;
-      font-size: 11px; font-weight: bold; line-height: 14px; text-align: center;
-      cursor: help; vertical-align: text-top; }
-    .hint:focus { outline: 2px solid #3498db; outline-offset: 2px; }
+    .status-key { margin: 0; padding: 0; list-style: none; }
+    .status-key li { padding: 6px 0; border-bottom: 1px solid #ecf0f1; }
+    .status-swatch { display: inline-block; width: 12px; height: 12px;
+      margin-right: 8px; border-radius: 50%; }
   "))),
 
   titlePanel(
@@ -89,44 +93,32 @@ ui <- fluidPage(
       width = 3,
       h4("Filters", style = "color: #3498db; font-weight: bold;"),
 
-      sliderInput("year_range", tagList(
-                    "Year range",
-                    hint("Keep records whose observation year falls in this inclusive range.")
-                  ),
+      sliderInput("year_range", "Year range",
                   min = year_min, max = year_max,
                   value = c(year_min, year_max), sep = "", step = 1),
 
-      checkboxGroupInput("iucn_filter", tagList(
-                           "IUCN status",
-                           hint("Keep records in the selected status categories. Demo-data statuses are illustrative placeholders, not real assessments.")
-                         ),
+      checkboxGroupInput("iucn_filter", "IUCN status",
                          choices = present_status, selected = present_status),
 
-      checkboxGroupInput("genus_filter", tagList(
-                           "Genus",
-                           hint("Keep records belonging to the selected plant genera.")
-                         ),
+      actionButton("threatened_only", "Threatened only",
+                   class = "btn-warning btn-sm"),
+      actionButton("all_statuses", "All statuses",
+                   class = "btn-default btn-sm"),
+      helpText("Threatened only selects Vulnerable, Endangered and Critically Endangered."),
+
+      checkboxGroupInput("genus_filter", "Genus",
                          choices = all_genera, selected = all_genera),
 
-      checkboxGroupInput("region_filter", tagList(
-                           "Area",
-                           hint("Filters the map and diversity tab by the nearest Cape reference region; comparison areas are chosen separately.")
-                         ),
+      checkboxGroupInput("region_filter", "Area",
                          choices = all_regions, selected = all_regions),
 
-      selectizeInput("species_filter", tagList(
-                       "Species (leave empty for all)",
-                       hint("Optionally keep only selected species. This filter works together with genus and the other sidebar filters.")
-                     ),
+      selectizeInput("species_filter", "Species (leave empty for all)",
                      choices = all_species, multiple = TRUE,
                      options = list(placeholder = "All species")),
 
       hr(),
       h4("Analysis", style = "color: #3498db; font-weight: bold;"),
-      selectInput("cell_size", tagList(
-                    "Grid cell size",
-                    hint("Sets the latitude/longitude grid used to count distinct species and define survey sites for the accumulation curve.")
-                  ),
+      selectInput("cell_size", "Grid cell size",
                   choices = c("0.1° (~10 km)" = 0.1,
                               "0.25° (~25 km)" = 0.25,
                               "0.5° (~50 km)" = 0.5),
@@ -143,15 +135,48 @@ ui <- fluidPage(
       tabsetPanel(
         type = "tabs",
 
+        tabPanel("Start here",
+          br(),
+          h3("Explore Cape Fynbos occurrence records"),
+          p("This dashboard maps recorded sightings of Proteaceae and Ericaceae and summarizes which species appear in the sample. Use the filters to explore different years, plant groups and areas."),
+          p("An occurrence record documents an observation at a place and time. It is not a count of individual plants, and more records can mean more people were recording rather than more plants growing there."),
+          p("Use these patterns to explore where observations have been made and what questions might be worth investigating; this sample is not a census or a conservation-priority map."),
+          if (is_mock) {
+            div(class = "alert alert-warning",
+                strong("About this demonstration: "),
+                "locations, species ranges and extinction-risk categories are simulated or illustrative. Use the dashboard to learn how the tools work, not to draw conclusions about real populations.")
+          },
+          h4("What the current filters show"),
+          fluidRow(
+            column(3, div(class = "well", div(class = "stat-label", "Sightings"),
+                          p(class = "stat-number", textOutput("start_records", inline = TRUE)))),
+            column(3, div(class = "well", div(class = "stat-label", "Species recorded"),
+                          p(class = "stat-number", textOutput("start_species", inline = TRUE)))),
+            column(3, div(class = "well", div(class = "stat-label", "Records in threatened categories"),
+                          p(class = "stat-number", textOutput("threatened_share", inline = TRUE)))),
+            column(3, div(class = "well", div(class = "stat-label", "Most species recorded"),
+                          p(class = "stat-number", textOutput("richest_region", inline = TRUE))))
+          ),
+          p(class = "note",
+            "The threatened share is the percentage of records labelled Vulnerable, Endangered or Critically Endangered. In demo data, these labels are placeholders."),
+          h4("Extinction-risk categories"),
+          p("These categories describe assessed extinction risk, not how many plants were observed. Demo-data assignments are illustrative placeholders."),
+          uiOutput("status_guide"),
+          h4("Where to go next"),
+          tags$ul(
+            tags$li("Open Map to see recorded sightings or the number of distinct species in each grid cell."),
+            tags$li("Open Diversity to explore the sampled mix of species and how records are distributed over time."),
+            tags$li("Open Compare areas to compare observed species counts at equal record effort.")
+          )
+        ),
+
         # -- Map
         tabPanel("Map",
           br(),
-          radioButtons("map_mode", tagList(
-                         "Map display",
-                         hint("Choose individual occurrence records or a grid summary of distinct species.")
-                       ), inline = TRUE,
-                       choices = c("Records by IUCN status" = "records",
-                                   "Species richness per grid cell" = "richness")),
+          radioButtons("map_mode", "Map display", inline = TRUE,
+                       choices = c("Species richness per grid cell" = "richness",
+                                   "Records by IUCN status" = "records"),
+                       selected = "richness"),
           p(class = "note",
             "Each dot is an occurrence record, not an individual plant. In richness mode, each square is shaded by the number of distinct species recorded in that grid cell. The map uses OpenStreetMap tiles and requires an internet connection."),
           leafletOutput("map", height = "600px")
@@ -161,36 +186,37 @@ ui <- fluidPage(
         tabPanel("Diversity",
           br(),
           fluidRow(
-            column(3, div(class = "well", div(class = "stat-label", "Records",
-                                              hint("Number of occurrence records matching the active filters; this is not a count of individual plants.")),
+            column(3, div(class = "well", div(class = "stat-label", "Sightings",
+                                              tags$small("occurrence records")),
                           p(class = "stat-number", textOutput("total_records", inline = TRUE)))),
-            column(3, div(class = "well", div(class = "stat-label", "Species",
-                                              hint("Number of distinct species represented in the filtered occurrence records.")),
+            column(3, div(class = "well", div(class = "stat-label", "Species recorded"),
                           p(class = "stat-number", textOutput("unique_species", inline = TRUE)))),
-            column(3, div(class = "well", div(class = "stat-label", "Shannon H'",
-                                              hint("Shannon diversity summarizes both the number of species and how evenly records are distributed among them. Higher values mean greater diversity in this sample.")),
-                          p(class = "stat-number", textOutput("shannon_index", inline = TRUE)))),
-            column(3, div(class = "well", div(class = "stat-label", "Simpson 1-D",
-                                              hint("The probability that two randomly selected records represent different species. Higher values mean greater diversity in this sample.")),
-                          p(class = "stat-number", textOutput("simpson_index", inline = TRUE))))
+            column(3, div(class = "well", div(class = "stat-label", "Variety score"),
+                          p(class = "stat-number", textOutput("effective_species", inline = TRUE)),
+                          tags$small("equally common species (exp Shannon H')"))),
+            column(3, div(class = "well", div(class = "stat-label", "Different-species chance"),
+                          p(class = "stat-number", textOutput("simpson_index", inline = TRUE)),
+                          tags$small("Simpson 1-D")))
           ),
           fluidRow(
             column(6, div(class = "well",
-                          h4("Survey effort",
-                             hint("Counts occurrence records by year. Peaks can reflect more observation activity, rather than a true increase in plant abundance.")),
+                          h4("Recording through time",
+                             tags$small("(sightings per year)")),
                           plotOutput("year_chart", height = "300px"),
-                          p(class = "note", "Records per year. Spikes usually reflect recording effort, not more plants."))),
+                          uiOutput("year_caption"))),
             column(6, div(class = "well",
-                          h4("Species accumulation",
-                             hint("Randomized accumulation of distinct species across occupied grid cells. A curve that continues rising suggests more sampling may find additional species.")),
+                          h4("Have we found them all?",
+                             tags$small("(species accumulation)")),
                           plotOutput("accumulation_curve", height = "300px"),
-                          p(class = "note", "If the curve is still climbing, the area is under-surveyed.")))
+                          uiOutput("accumulation_caption")))
           ),
           fluidRow(
             column(12, div(class = "well",
-                           h4("Records per species",
-                              hint("The 15 most-recorded species under the current filters. Record counts reflect sampling activity and are not population sizes.")),
-                           uiOutput("species_plot_ui")))
+                           h4("Most-recorded species",
+                              tags$small("(top 15 by sightings)")),
+                           uiOutput("species_plot_ui"),
+                           p(class = "note",
+                             "Record counts describe observation activity, not how many plants occur in nature.")))
           )
         ),
 
@@ -198,24 +224,18 @@ ui <- fluidPage(
         tabPanel("Compare areas",
           br(),
           fluidRow(
-            column(3, selectInput("area_a", tagList(
-                                    "Area A",
-                                    hint("First Cape reference region to compare. Comparison ignores the sidebar Area filter.")
-                                  ), choices = all_regions,
+            column(3, selectInput("area_a", "Area A", choices = all_regions,
                                   selected = all_regions[1])),
-            column(3, selectInput("area_b", tagList(
-                                    "Area B",
-                                    hint("Second Cape reference region to compare. Comparison ignores the sidebar Area filter.")
-                                  ), choices = all_regions,
+            column(3, selectInput("area_b", "Area B", choices = all_regions,
                                   selected = all_regions[min(2, length(all_regions))]))
           ),
           p(class = "note",
-            "The table and chart compare records, observed species and diversity. Rarefied richness estimates expected species at equal record counts; it helps account for unequal sampling effort, but does not correct every survey bias."),
+            "Rarefied richness means expected species at equal effort: both areas are compared using the same number of occurrence records. This helps with unequal sample sizes, but does not correct every survey bias."),
           div(class = "well", tableOutput("compare_table"),
               uiOutput("compare_note")),
           div(class = "well", plotOutput("compare_chart", height = "320px")),
           p(class = "note",
-            "Uses year, IUCN status, genus and species filters from the sidebar. The Area filter is ignored here.")
+            "Uses year, status, genus and species filters from the sidebar. The Area filter is ignored here.")
         ),
 
         # -- Data
@@ -237,6 +257,17 @@ ui <- fluidPage(
 # ---- Server -----------------------------------------------------------------
 
 server <- function(input, output, session) {
+
+  observeEvent(input$threatened_only, {
+    updateCheckboxGroupInput(
+      session, "iucn_filter",
+      selected = intersect(threatened_statuses, present_status)
+    )
+  })
+
+  observeEvent(input$all_statuses, {
+    updateCheckboxGroupInput(session, "iucn_filter", selected = present_status)
+  })
 
   # Year, IUCN and species filters (used by the compare tab)
   base_filtered <- reactive({
@@ -276,12 +307,49 @@ server <- function(input, output, session) {
   # ---- Summary cards
   output$total_records  <- renderText(format(nrow(filtered_data()), big.mark = ","))
   output$unique_species <- renderText(summary_stats()$richness)
-  output$shannon_index  <- renderText(fmt(summary_stats()$shannon))
-  output$simpson_index  <- renderText(fmt(summary_stats()$simpson))
+  output$effective_species <- renderText(
+    paste0("≈ ", fmt(exp(summary_stats()$shannon)))
+  )
+  output$simpson_index <- renderText({
+    value <- summary_stats()$simpson
+    if (is.na(value)) "–" else sprintf("%.0f%%", value * 100)
+  })
+
+  output$start_records <- renderText(format(nrow(filtered_data()), big.mark = ","))
+  output$start_species <- renderText(summary_stats()$richness)
+  output$threatened_share <- renderText({
+    d <- filtered_data()
+    if (!nrow(d)) return("–")
+    sprintf("%.1f%%", 100 * mean(d$iucn_status %in% threatened_statuses))
+  })
+  output$richest_region <- renderText({
+    d <- filtered_data()
+    if (!nrow(d)) return("–")
+    ranked <- d %>%
+      group_by(region) %>%
+      summarise(species = n_distinct(species), .groups = "drop")
+    leaders <- ranked %>% filter(species == max(species)) %>% pull(region)
+    paste(leaders, collapse = " / ")
+  })
+
+  output$status_guide <- renderUI({
+    tags$ul(
+      class = "status-key",
+      lapply(present_status, function(status) {
+        tags$li(
+          tags$span(
+            class = "status-swatch",
+            style = paste0("background-color: ", IUCN_COLOURS[[status]], ";")
+          ),
+          tags$strong(status), " — ", status_descriptions[[status]]
+        )
+      })
+    )
+  })
 
   # ---- Map (base map drawn once; layers updated through a proxy)
   output$map <- renderLeaflet({
-    leaflet() %>%
+    leaflet(options = leafletOptions(preferCanvas = TRUE)) %>%
       addTiles() %>%
       fitBounds(min(occurrences$decimalLongitude), min(occurrences$decimalLatitude),
                 max(occurrences$decimalLongitude), max(occurrences$decimalLatitude))
@@ -310,6 +378,7 @@ server <- function(input, output, session) {
           fillColor = ~pal(as.character(iucn_status)),
           radius = 7, stroke = TRUE, color = "#ffffff", weight = 1.5,
           fillOpacity = 0.9,
+          clusterOptions = markerClusterOptions(),
           popup = ~paste0("<b>", species, "</b><br>Genus: ", genus,
                           "<br>Year: ", year,
                           "<br>Status: ", iucn_status, "<br>Area: ", region)
@@ -328,7 +397,7 @@ server <- function(input, output, session) {
           popup = ~paste0("Species: ", richness, "<br>Records: ", records)
         ) %>%
         addLegend("bottomright", pal = pal, values = cells$richness,
-                  title = "Species richness")
+                  title = "Species per grid cell")
     }
   })
 
@@ -343,8 +412,48 @@ server <- function(input, output, session) {
 
     ggplot(per_year, aes(year, n)) +
       geom_col(fill = "#3498db") +
-      labs(x = "Year", y = "Records") +
+      labs(x = "Year", y = "Sightings") +
       plot_theme
+  })
+
+  output$year_caption <- renderUI({
+    d <- filtered_data()
+    if (!nrow(d)) return(p(class = "note", no_data_msg))
+
+    year_limits <- input$year_range
+    before_years <- if (year_limits[1] < 2015) {
+      seq.int(year_limits[1], min(year_limits[2], 2014))
+    } else {
+      integer()
+    }
+    after_years <- if (year_limits[2] >= 2015) {
+      seq.int(max(year_limits[1], 2015), year_limits[2])
+    } else {
+      integer()
+    }
+
+    per_year <- d %>% count(year)
+    before_avg <- if (length(before_years)) {
+      sum(per_year$n[per_year$year %in% before_years]) / length(before_years)
+    } else {
+      NA_real_
+    }
+    after_avg <- if (length(after_years)) {
+      sum(per_year$n[per_year$year %in% after_years]) / length(after_years)
+    } else {
+      NA_real_
+    }
+
+    caption <- if (!is.na(before_avg) && !is.na(after_avg) && before_avg > 0) {
+      paste0(
+        "Since 2015, the filtered data averages ",
+        format(round(after_avg / before_avg, 1), nsmall = 1),
+        " times as many records per year as before 2015. This reflects recording activity, not plant abundance."
+      )
+    } else {
+      "Yearly record counts describe observation activity, not plant abundance. Select years on both sides of 2015 to compare the averages."
+    }
+    p(class = "note", caption)
   })
 
   output$accumulation_curve <- renderPlot({
@@ -363,6 +472,29 @@ server <- function(input, output, session) {
       plot_theme
   })
 
+  output$accumulation_caption <- renderUI({
+    d <- filtered_data()
+    if (!nrow(d)) return(p(class = "note", no_data_msg))
+    acc <- species_accumulation(d, cell_size())
+    if (is.null(acc)) {
+      return(p(class = "note", "At least two occupied grid cells are needed to estimate this curve."))
+    }
+
+    final_richness <- tail(acc$richness, 1)
+    comparison_index <- max(1, floor(length(acc$richness) * 0.75))
+    still_rising <- final_richness > acc$richness[comparison_index]
+    trend <- if (still_rising) {
+      "The line is still rising near the end, so additional sampled cells are still adding species."
+    } else {
+      "The line is flattening near the end, so additional sampled cells are adding fewer new species."
+    }
+    p(class = "note", paste0(
+      "The estimate reaches about ", round(final_richness), " species across ",
+      max(acc$sites), " occupied grid cells. ", trend,
+      " This is not proof that every species has been found."
+    ))
+  })
+
   output$species_chart <- renderPlot({
     d <- filtered_data()
     validate(need(nrow(d) > 0, no_data_msg))
@@ -379,7 +511,7 @@ server <- function(input, output, session) {
       geom_col() +
       coord_flip() +
       scale_fill_manual(values = IUCN_COLOURS, name = "IUCN status", drop = TRUE) +
-      labs(x = NULL, y = "Records") +
+      labs(x = NULL, y = "Sightings") +
       plot_theme
   })
 
@@ -398,12 +530,11 @@ server <- function(input, output, session) {
     comparison() %>%
       transmute(
         Area = area,
-        Records = records,
-        Species = richness,
-        `Shannon H'` = shannon,
-        `Simpson 1-D` = simpson,
-        Evenness = evenness,
-        `Rarefied richness` = rarefied_richness
+        Sightings = records,
+        `Species recorded` = richness,
+        `Effective species` = exp(shannon),
+        `Chance two sightings differ (%)` = 100 * simpson,
+        `Species at equal effort` = rarefied_richness
       )
   }, digits = 2, na = "–")
 
@@ -423,8 +554,12 @@ server <- function(input, output, session) {
     validate(need(all(cmp$records > 0), "One of the selected areas has no records under the current filters."))
 
     cmp %>%
-      select(area, `Shannon H'` = shannon, `Simpson 1-D` = simpson,
-             `Rarefied richness` = rarefied_richness) %>%
+      transmute(
+        area,
+        `Effective species` = exp(shannon),
+        `Chance two sightings differ (%)` = 100 * simpson,
+        `Species at equal effort` = rarefied_richness
+      ) %>%
       pivot_longer(-area, names_to = "metric", values_to = "value") %>%
       ggplot(aes(x = area, y = value, fill = area)) +
       geom_col(width = 0.6) +

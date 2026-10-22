@@ -1,5 +1,4 @@
 library(testthat)
-library(dplyr)
 source("../../R/helpers.R")
 
 test_that("diversity summary matches hand-calculated values", {
@@ -25,6 +24,29 @@ test_that("grid cells report record and species richness", {
   expect_equal(max(cells$richness), 2L)
 })
 
+test_that("regions are assigned to the nearest Cape reference point", {
+  result <- assign_region(
+    c(CAPE_REGIONS$lat[1], NA_real_),
+    c(CAPE_REGIONS$lon[1], NA_real_)
+  )
+
+  expect_equal(result, c("Cape Peninsula", "Other"))
+})
+
+test_that("only coordinates with both values zero fail the zero-coordinate check", {
+  raw <- tibble::tibble(
+    species = c("Protea repens", "Protea nitida"),
+    decimalLatitude = c(0, -34),
+    decimalLongitude = c(0, 0),
+    year = c(2020L, 2020L),
+    coordinateUncertaintyInMeters = c(10, 10)
+  )
+  result <- clean_occurrences(raw)
+
+  expect_equal(result$log$removed[result$log$step == "Zero coordinates"], 1L)
+  expect_equal(result$log$removed[result$log$step == "Outside South Africa"], 1L)
+})
+
 test_that("species accumulation uses occupied grid cells as sites", {
   data <- tibble::tibble(
     species = c("a", "b", "a"),
@@ -33,8 +55,15 @@ test_that("species accumulation uses occupied grid cells as sites", {
   )
 
   curve <- species_accumulation(data, 0.1)
+  curve_again <- species_accumulation(data, 0.1)
   expect_equal(max(curve$sites), 2)
   expect_equal(tail(curve$richness, 1), 2)
+  expect_equal(curve, curve_again)
+
+  set.seed(2718)
+  rng_before <- .Random.seed
+  species_accumulation(data, 0.1)
+  expect_identical(.Random.seed, rng_before)
 })
 
 test_that("rarefaction compares areas at equal effort", {

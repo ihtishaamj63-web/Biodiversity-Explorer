@@ -45,8 +45,8 @@ clean_occurrences <- function(raw) {
          call. = FALSE)
   }
 
-  data <- raw %>%
-    mutate(
+  data <- raw |>
+    dplyr::mutate(
       species = stringr::str_to_sentence(
         stringr::str_squish(as.character(species))
       ),
@@ -83,7 +83,7 @@ clean_occurrences <- function(raw) {
   record_step("Missing coordinates",
               !is.na(data$decimalLatitude) & !is.na(data$decimalLongitude))
   record_step("Zero coordinates",
-              data$decimalLatitude != 0 & data$decimalLongitude != 0)
+              !(data$decimalLatitude == 0 & data$decimalLongitude == 0))
   record_step("Outside South Africa",
               data$decimalLatitude >= -35 & data$decimalLatitude <= -22 &
                 data$decimalLongitude >= 16 & data$decimalLongitude <= 33.5)
@@ -106,7 +106,9 @@ clean_occurrences <- function(raw) {
 }
 
 diversity_summary <- function(data) {
-  counts <- data %>% dplyr::count(species, name = "records") %>% dplyr::pull(records)
+  counts <- data |>
+    dplyr::count(species, name = "records") |>
+    dplyr::pull(records)
   richness <- length(counts)
   if (!richness) {
     return(list(richness = 0L, shannon = NA_real_, simpson = NA_real_,
@@ -127,12 +129,12 @@ richness_by_cell <- function(data, cell_size) {
       is.na(cell_size) || cell_size <= 0) {
     stop("cell_size must be a positive number.", call. = FALSE)
   }
-  data %>%
+  data |>
     dplyr::mutate(
       lat0 = floor(decimalLatitude / cell_size) * cell_size,
       lon0 = floor(decimalLongitude / cell_size) * cell_size
-    ) %>%
-    dplyr::group_by(lat0, lon0) %>%
+    ) |>
+    dplyr::group_by(lat0, lon0) |>
     dplyr::summarise(
       lat1 = lat0[1] + cell_size,
       lon1 = lon0[1] + cell_size,
@@ -147,18 +149,28 @@ species_accumulation <- function(data, cell_size) {
       is.na(cell_size) || cell_size <= 0) {
     stop("cell_size must be a positive number.", call. = FALSE)
   }
-  cells <- data %>%
+  cells <- data |>
     dplyr::mutate(site = paste(
       floor(decimalLatitude / cell_size),
       floor(decimalLongitude / cell_size), sep = ":"
-    )) %>%
-    dplyr::distinct(site, species) %>%
-    dplyr::mutate(present = 1L) %>%
+    )) |>
+    dplyr::distinct(site, species) |>
+    dplyr::mutate(present = 1L) |>
     tidyr::pivot_wider(names_from = species, values_from = present,
                        values_fill = 0)
 
   if (nrow(cells) < 2) return(NULL)
   community <- as.matrix(dplyr::select(cells, -site))
+  seed_exists <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  if (seed_exists) old_seed <- get(".Random.seed", envir = .GlobalEnv)
+  on.exit({
+    if (seed_exists) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+  set.seed(42)
   curve <- vegan::specaccum(community, method = "random")
   tibble::tibble(sites = curve$sites, richness = curve$richness, sd = curve$sd)
 }
@@ -172,7 +184,8 @@ compare_areas <- function(data, area_a, area_b) {
   dplyr::bind_rows(lapply(seq_along(areas), function(i) {
     subset <- subsets[[i]]
     stats <- diversity_summary(subset)
-    counts <- subset %>% dplyr::count(species, name = "records") %>%
+    counts <- subset |>
+      dplyr::count(species, name = "records") |>
       dplyr::pull(records)
     rarefied <- if (sample_size >= 1) {
       unname(vegan::rarefy(matrix(counts, nrow = 1), sample_size)[1])
