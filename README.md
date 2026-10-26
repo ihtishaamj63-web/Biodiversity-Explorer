@@ -75,3 +75,6 @@ data-raw/                      data scripts: simulate, clean, optional GBIF down
 data/                          cleaned data and cleaning log (generated)
 tests/testthat/                unit tests
 ```
+## Screenshots:
+
+![Biodiversity-Explorer Dashboard]({14AFDC97-694F-4E77-8F2D-74DDA5F41BDF}.png)
